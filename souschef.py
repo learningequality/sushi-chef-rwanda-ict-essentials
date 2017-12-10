@@ -18,9 +18,9 @@ import youtube_dl
 # Run Constants
 ###########################################################
 
-CHANNEL_NAME = "RME ICT Essentials for Teachers"              # Name of channel
+CHANNEL_NAME = "RME_ICT_Essentials_for_Teachers"              # Name of channel
 CHANNEL_SOURCE_ID = "rme-ict-essentials"      # Channel's unique id
-CHANNEL_DOMAIN = "content@learningequality.org"					# Who is providing the content
+CHANNEL_DOMAIN = "ict-essentials-for-teachers.moodlecloud.com" # Who is providing the content
 CHANNEL_LANGUAGE = "en"		# Language of channel
 CHANNEL_DESCRIPTION = None                                  # Description of the channel (optional)
 CHANNEL_THUMBNAIL = None                                    # Local path or url to image file (optional)
@@ -53,6 +53,15 @@ IMG_LOOKUP = {
         'SectionCompetency.png': 'Competency'
         }
 
+def make_fully_qualified_url(url):
+    """ Ensure url is qualified """
+    if url.startswith("//"):
+        return "http:" + url
+    elif url.startswith("/"):
+        return "http://elearning.reb.rw" + url
+    assert url.startswith("http"), "Bad URL (relative to unknown location): " + url
+    return url
+
 # Main Scraping Method 
 ###########################################################
 def scrape_source(writer):
@@ -75,7 +84,6 @@ def scrape_source(writer):
 
 # Unit-related functions
 ##########################
-
 def get_units_from_site(page):
     """ 
       Get all the unit names and links from the main page
@@ -97,32 +105,89 @@ def parse_unit(writer, name, link):
     PATH.open_folder(folder_name(name))
 
     sections = page.find_all('li', id = re.compile('section-')) 
+    description = description_unit(sections[0])
+    print(">>>>>>>>>>>>>>")
+    print("Description")
+    print("**" + description + "**")
     writer.add_folder(str(PATH), name, "", "TODO: Generate Description")
-    for section in sections:
-        section_type = clasify_block(section) 
-        if section_type == 'html':
-            add_html5app(writer, section)
-        elif section_type == 'video': 
-            add_video(writer, section)
+    #for section in sections:
+    #    section_type = clasify_block(section) 
+    #    if section_type == 'html':
+    #        add_html5app(writer, section)
+    #    elif section_type == 'video': 
+    #        add_video(writer, section)
     PATH.go_to_parent_folder()
     return 0
+
+def description_unit(unit):
+    # print(unit)
+    learning_objectives = unit.find(["p", "b", "strong"], text=re.compile("Learning Objective"))
+    if learning_objectives: 
+        description = description_previous_sibling(learning_objectives)	
+        if description: 
+            return description
+        description = description_parent_previous_sibling(learning_objectives)	
+        if description: 
+            return description
+        description = description_parent_parent_previous_sibling(learning_objectives)	
+        if description: 
+            return description
+        description = description_parent_previous_sibling_previous_sibling(learning_objectives)	
+        if description: 
+            return description
+        description = learning_objectives.find_parent().find_previous_sibling(['div', 'p']).find_previous_sibling(['div', 'p'])
+        if description and description.get_text():
+            return description.get_text()
+    return ""
+
+def description_previous_sibling(learning_objectives):
+    try: 
+        description = learning_objectives.find_previous_sibling(['div', 'p'])
+        if description and description.get_text().strip():
+            return description.get_text()
+    except:
+        return ""
+
+def description_parent_previous_sibling(learning_objectives):
+    try:
+        description = learning_objectives.find_parent().find_previous_sibling(['div', 'p'])
+        if description and description.get_text():
+            return description.get_text()
+    except:
+        return ""
+
+def description_parent_parent_previous_sibling(learning_objectives):
+    try:
+        description = learning_objectives.find_parent().find_parent().find_previous_sibling(['div', 'p'])
+        if description and description.get_text():
+            return description.get_text()
+    except: 
+        return ""
+
+def description_parent_previous_sibling_previous_sibling(learning_objectives):
+    try:
+        description = learning_objectives.find_previous_sibling(['div', 'p']).find_previous_sibling(['div', 'p'])
+        if description and description.get_text():
+            return description.get_text()
+    except:
+        return ""
 
 # Generating HTML5 app
 ##########################
 
 def add_video(writer, section):
-     title = extract_title(section)
-     video = section.find("iframe", src=re.compile("youtube"))
-     video_filename = download_video(video.get('src'))
-     if video_filename:
-         writer.add_file(str(PATH), title, str("./") + str(video_filename), license="TODO", copyright_holder = "TODO")
+    title = extract_title(section)
+    video = section.find("iframe", src=re.compile("youtube"))
+    video_filename = download_video(video.get('src'))
+    if video_filename:
+        writer.add_file(str(PATH), title, str("./") + str(video_filename), license="TODO", copyright_holder = "TODO")
 
 def add_html5app(writer, section):
-     title = extract_title(section)
-     filename = generate_html5app_from_section(section)
-     print_modules(section)
-     writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license="TODO", copyright_holder = "TODO")
-     os.remove(html5app_path_from_title(title))
+    title = extract_title(section)
+    filename = generate_html5app_from_section(section)
+    print_modules(section)
+    writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license="TODO", copyright_holder = "TODO")
+    os.remove(html5app_path_from_title(title))
 
 
 def generate_html5app_from_section(section):
@@ -166,7 +231,7 @@ def print_modules(section):
         titles = module.find_all("img", class_=re.compile("atto_image_button_"))
         for t in titles:
             if is_valid_title(t):
-                print("\t\t - " + str(real_title(t) + " " + clasify_block(module)))
+                print("\t\t - " + str(real_title(t) + " " + clasify_block(module))) 
                 if real_title(t) == "Recommended Time":
                     print("********")
                     print("\t\t\t" + get_recommended_time(t))
@@ -208,11 +273,11 @@ def is_valid_title(title):
 def download_video(url):
     print(url)
     ydl_options = {
-            'outtmpl': '%(title)s-%(id)s.%(ext)s',
-            'continuedl': True,
-            # 'quiet' : True,
-            'restrictfilenames':True, 
-            }
+	    'outtmpl': '%(title)s-%(id)s.%(ext)s',
+	    'continuedl': True,
+	    # 'quiet' : True,
+	    'restrictfilenames':True, 
+	    }
     video_filename = ""
     with youtube_dl.YoutubeDL(ydl_options) as ydl:
         try:
@@ -233,11 +298,11 @@ if __name__ == '__main__':
     # Open a writer to generate files
     with data_writer.DataWriter(write_to_path=WRITE_TO_PATH) as writer:
 
-        # Write channel details to spreadsheet
+	# Write channel details to spreadsheet
         thumbnail = writer.add_file(str(PATH), "Channel Thumbnail", CHANNEL_THUMBNAIL, write_data=False)
         writer.add_channel(CHANNEL_NAME, CHANNEL_SOURCE_ID, CHANNEL_DOMAIN, CHANNEL_LANGUAGE, description=CHANNEL_DESCRIPTION, thumbnail=thumbnail)
 
-        # Scrape source content
+	# Scrape source content
         scrape_source(writer)
 
         sys.stdout.write("\n\nDONE: Zip created at {}\n".format(writer.write_to_path))
