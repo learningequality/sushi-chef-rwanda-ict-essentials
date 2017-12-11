@@ -106,10 +106,8 @@ def parse_unit(writer, name, link):
 
     sections = page.find_all('li', id = re.compile('section-')) 
     description = description_unit(sections[0])
-    print(">>>>>>>>>>>>>>")
-    print("Description")
-    print("**" + description + "**")
-    writer.add_folder(str(PATH), name, "", "TODO: Generate Description")
+    recommended_time = get_recommended_time_from_section(page.find('li', id = "section-0"))
+    writer.add_folder(str(PATH), name, "", description + "\n Recommended time: " + str(recommended_time))
     #for section in sections:
     #    section_type = clasify_block(section) 
     #    if section_type == 'html':
@@ -119,8 +117,23 @@ def parse_unit(writer, name, link):
     PATH.go_to_parent_folder()
     return 0
 
+def get_recommended_time_from_section(section):
+    img = section.find("img", src=re.compile("SectionTime"))
+    if not img:
+        return ""
+    pattern = re.compile(".*(hour|minute)s?")
+    try:
+        if pattern.match(img.parent.next_sibling.get_text()):
+            return img.parent.next_sibling.get_text().strip()
+    except:
+        try:
+            if pattern.match(img.parent.parent.next_sibling.get_text()):
+                return img.parent.parent.next_sibling.get_text().strip()
+        except: 
+            return ""
+
+
 def description_unit(unit):
-    # print(unit)
     learning_objectives = unit.find(["p", "b", "strong"], text=re.compile("Learning Objective"))
     if learning_objectives: 
         description = description_previous_sibling(learning_objectives)	
@@ -234,7 +247,7 @@ def print_modules(section):
                 print("\t\t - " + str(real_title(t) + " " + clasify_block(module))) 
                 if real_title(t) == "Recommended Time":
                     print("********")
-                    print("\t\t\t" + get_recommended_time(t))
+                    print("\t\t\t" + get_recommended_time_from_title(t))
                     print("********")
     if len(modules) == 0 :
         print("\t\t Unit Title - " + clasify_block(section))
@@ -251,7 +264,7 @@ def real_title(title):
     filename = title.get("src").split("/")[-1]
     return IMG_LOOKUP[filename]
 
-def get_recommended_time(title):
+def get_recommended_time_from_title(title):
     if title.parent.get_text():
         return title.parent.get_text()
     else:
