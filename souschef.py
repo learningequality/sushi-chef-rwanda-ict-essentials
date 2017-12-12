@@ -106,31 +106,43 @@ def parse_unit(writer, name, link):
 
     sections = page.find_all('li', id = re.compile('section-')) 
     description = description_unit(sections[0])
-    recommended_time = get_recommended_time_from_section(page.find('li', id = "section-0"))
+    recommended_time = get_recommended_time_for_section(page.find('li', id = "section-0"))
+    print("Recommended Time:" + recommended_time)
     writer.add_folder(str(PATH), name, "", description + "\n Recommended time: " + str(recommended_time))
-    #for section in sections:
-    #    section_type = clasify_block(section) 
-    #    if section_type == 'html':
-    #        add_html5app(writer, section)
-    #    elif section_type == 'video': 
-    #        add_video(writer, section)
+    for section in sections:
+        section_type = clasify_block(section) 
+        if section_type == 'html':
+            add_html5app(writer, section)
+        elif section_type == 'video': 
+            add_video(writer, section)
     PATH.go_to_parent_folder()
     return 0
 
-def get_recommended_time_from_section(section):
+def get_recommended_time_for_section(section):
     img = section.find("img", src=re.compile("SectionTime"))
     if not img:
         return ""
-    pattern = re.compile(".*(hour|minute)s?")
-    try:
-        if pattern.match(img.parent.next_sibling.get_text()):
-            return img.parent.next_sibling.get_text().strip()
+    pattern = re.compile(".*(hour|minute|Minute)s?")
+    try: 
+        if pattern.match(img.get_text()):
+            return img.get_text().strip()
+        else:
+           raise "Continue with execution"
     except:
-        try:
-            if pattern.match(img.parent.parent.next_sibling.get_text()):
-                return img.parent.parent.next_sibling.get_text().strip()
-        except: 
-            return ""
+        try: 
+            if pattern.match(img.next_sibling.get_text()):
+                return img.next_sibling.get_text().strip()
+        except:
+            try:
+                if pattern.match(img.parent.next_sibling.get_text()):
+                    return img.parent.next_sibling.get_text().strip()
+            except:
+                try:
+                    if pattern.match(img.parent.parent.next_sibling.get_text()):
+                        return img.parent.parent.next_sibling.get_text().strip()
+                except: 
+                    print('\033[91m' + "Empty recommended time" + '\033[0m')
+                    return ""
 
 
 def description_unit(unit):
@@ -197,8 +209,10 @@ def add_video(writer, section):
 
 def add_html5app(writer, section):
     title = extract_title(section)
+    recommended_time = get_recommended_time_for_section(section)
     filename = generate_html5app_from_section(section)
-    print_modules(section)
+    print("\t\t\tRecommmended time: " + recommended_time)
+    #print_modules(section)
     writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license="TODO", copyright_holder = "TODO")
     os.remove(html5app_path_from_title(title))
 
@@ -240,14 +254,14 @@ def folder_name(unit_name):
 
 def print_modules(section):
     modules = section.find_all("li", id=re.compile('module-'))
-    for module in modules:
+    for module in modules: 
+        recommended_time = get_recommended_time_for_section(module) 
         titles = module.find_all("img", class_=re.compile("atto_image_button_"))
         for t in titles:
             if is_valid_title(t):
-                print("\t\t - " + str(real_title(t) + " " + clasify_block(module))) 
                 if real_title(t) == "Recommended Time":
                     print("********")
-                    print("\t\t\t" + get_recommended_time_from_title(t))
+                    print("\t\t\t" +recommended_time)
                     print("********")
     if len(modules) == 0 :
         print("\t\t Unit Title - " + clasify_block(section))
@@ -264,18 +278,12 @@ def real_title(title):
     filename = title.get("src").split("/")[-1]
     return IMG_LOOKUP[filename]
 
-def get_recommended_time_from_title(title):
-    if title.parent.get_text():
-        return title.parent.get_text()
-    else:
-        return title.parent.parent.get_text() 
-
 def is_valid_title(title):
     """
     is_valid_title is true if the name of the image contains Unit or Section on it 
     but not contains Quote 
     or Method1 or Method2 
-    (because they are extra images on the section)
+    (because they are extra images on section)
     """
     pattern1 = re.compile("Unit|Section", re.IGNORECASE)
     pattern2 = re.compile("^.*Quote.*$", re.IGNORECASE)
@@ -288,7 +296,7 @@ def download_video(url):
     ydl_options = {
 	    'outtmpl': '%(title)s-%(id)s.%(ext)s',
 	    'continuedl': True,
-	    # 'quiet' : True,
+	    'quiet' : True,
 	    'restrictfilenames':True, 
 	    }
     video_filename = ""
@@ -300,9 +308,6 @@ def download_video(url):
         except (youtube_dl.utils.DownloadError,youtube_dl.utils.ContentTooShortError,youtube_dl.utils.ExtractorError) as e:
             return "" 
     return video_filename 
-
-
-
 
 
 """ This code will run when the sous chef is called from the command line. """
