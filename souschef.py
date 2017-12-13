@@ -14,6 +14,7 @@ import re
 
 from utils.slugify import slugify
 import youtube_dl
+from ricecooker.utils.html import download_file
 
 # Run Constants
 ###########################################################
@@ -52,6 +53,10 @@ IMG_LOOKUP = {
         'UnitReferences.png': 'References',
         'SectionCompetency.png': 'Competency'
         }
+
+
+if not os.path.exists("assets"):
+    os.makedirs("assets")
 
 def make_fully_qualified_url(url):
     """ Ensure url is qualified """
@@ -222,9 +227,27 @@ def generate_html5app_from_section(section):
     print("\t" + str(title) + " (" + section.get('id') + ")")
     filename = html5app_path_from_title(title)
     with HTMLWriter(filename) as html5zip:
+        add_images_to_zip(html5zip, section)
         content = section.encode_contents
         html5zip.write_index_contents("<html><head></head><body>{}</body></html>".format(content))   
     return filename 
+
+def add_images_to_zip(zipwriter, section):
+    images = replace_tags_with_local_content(section)
+    for image in images:
+        zipwriter.write_file(image["src"])
+    return 0
+
+def replace_tags_with_local_content(section):
+    images = section.find_all("img") 
+    for image in images:
+        try:
+           relpath, _ = download_file(make_fully_qualified_url(image["src"]), "./assets")
+           image["src"] = os.path.join("./assets", relpath)
+        except Exception:
+           image["src"] = "#"
+    return images 
+
 
 def extract_title(section):
     page_title = section.find("h3", class_="sectionname")
@@ -238,7 +261,7 @@ def html5app_filename(title):
     return "{}.zip".format(slugify(title))
 
 def html5app_path_from_title(title):
-    return "./{}".format(html5app_filename)
+    return "./{}".format(html5app_filename(title))
 
 def folder_name(unit_name):
     """ 
