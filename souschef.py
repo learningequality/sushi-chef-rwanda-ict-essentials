@@ -217,7 +217,6 @@ def add_html5app(writer, section):
     recommended_time = get_recommended_time_for_section(section)
     filename = generate_html5app_from_section(section)
     print("\t\t\tRecommmended time: " + recommended_time)
-    #print_modules(section)
     writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license="TODO", copyright_holder = "TODO")
     os.remove(html5app_path_from_title(title))
 
@@ -240,13 +239,21 @@ def add_images_to_zip(zipwriter, section):
 
 def replace_tags_with_local_content(section):
     images = section.find_all("img") 
+    new_images = []
     for image in images:
-        try:
-           relpath, _ = download_file(make_fully_qualified_url(image["src"]), "./assets")
-           image["src"] = os.path.join("./assets", relpath)
-        except Exception:
-           image["src"] = "#"
-    return images 
+        if is_valid_title(image):
+            soup = BeautifulSoup("<h3></h3>", 'html.parser')
+            new_tag = soup.h3
+            new_tag.append(real_title(image))
+            image.replace_with(new_tag)
+        else:	
+            try:
+                new_images.append(image)
+                relpath, _ = download_file(make_fully_qualified_url(image["src"]), "./assets")
+                image["src"] = os.path.join("./assets", relpath)
+            except Exception:
+                image["src"] = "#"
+    return new_images 
 
 
 def extract_title(section):
@@ -275,21 +282,6 @@ def folder_name(unit_name):
     """
     return re.search('(.+?) - .*', unit_name).group(1)
 
-def print_modules(section):
-    modules = section.find_all("li", id=re.compile('module-'))
-    for module in modules: 
-        recommended_time = get_recommended_time_for_section(module) 
-        titles = module.find_all("img", class_=re.compile("atto_image_button_"))
-        for t in titles:
-            if is_valid_title(t):
-                if real_title(t) == "Recommended Time":
-                    print("********")
-                    print("\t\t\t" +recommended_time)
-                    print("********")
-    if len(modules) == 0 :
-        print("\t\t Unit Title - " + clasify_block(section))
-    return 0 
-
 def clasify_block(module):
     module_type = "html"
     video = module.find("iframe", src=re.compile("youtube"))
@@ -308,11 +300,15 @@ def is_valid_title(title):
     or Method1 or Method2 
     (because they are extra images on section)
     """
-    pattern1 = re.compile("Unit|Section", re.IGNORECASE)
-    pattern2 = re.compile("^.*Quote.*$", re.IGNORECASE)
-    pattern3 = re.compile("^.*Method[1|2].*$", re.IGNORECASE)
     filename = title.get("src").split("/")[-1]
-    return (pattern1.match(filename) and (not pattern2.match(filename) and (not pattern3.match(filename))))
+    try:
+        title = IMG_LOOKUP[filename]
+        if title:
+            return True
+        else:
+            return False
+    except: 
+        return False
 
 def download_video(url):
     print(url)
