@@ -16,6 +16,12 @@ from utils.slugify import slugify
 import youtube_dl
 from ricecooker.utils.html import download_file
 
+import urllib.request
+import uuid
+import magic
+
+
+
 # Run Constants
 ###########################################################
 
@@ -27,7 +33,8 @@ CHANNEL_DESCRIPTION = None                                  # Description of the
 CHANNEL_THUMBNAIL = None                                    # Local path or url to image file (optional)
 PATH = path_builder.PathBuilder(channel_name=CHANNEL_NAME)  # Keeps track of path to write to csv
 WRITE_TO_PATH = "{}{}{}.zip".format(os.path.dirname(os.path.realpath(__file__)), os.path.sep, CHANNEL_NAME) # Where to generate zip file
-
+CHANNEL_LICENSE = licenses.CC_BY_SA
+CHANNEL_LICENSE_OWNER = "Ministry of Education, Rwanda"
 
 # Additional Constants 
 ###########################################################
@@ -63,7 +70,7 @@ def make_fully_qualified_url(url):
     if url.startswith("//"):
         return "http:" + url
     elif url.startswith("/"):
-        return "http://elearning.reb.rw" + url
+        return "http://" + CHANNEL_DOMAIN + url
     assert url.startswith("http"), "Bad URL (relative to unknown location): " + url
     return url
 
@@ -81,8 +88,6 @@ def scrape_source(writer):
     for u in units:
         print(u['name'])  
         parse_unit(writer, u['name'], u['link'])
-    # TODO: Replace line with scraping code
-    raise NotImplementedError("Scraping method not implemented")
 
 # Helper Methods 
 ###########################################################
@@ -113,7 +118,7 @@ def parse_unit(writer, name, link):
     description = description_unit(sections[0])
     recommended_time = get_recommended_time_for_section(page.find('li', id = "section-0"))
     print("Recommended Time:" + recommended_time)
-    writer.add_folder(str(PATH), name, "", description + "\n Recommended time: " + str(recommended_time))
+    writer.add_folder(str(PATH), name, "", description + "Recommended time: " + str(recommended_time))
     for section in sections:
         section_type = clasify_block(section) 
         if section_type == 'html':
@@ -210,14 +215,14 @@ def add_video(writer, section):
     video = section.find("iframe", src=re.compile("youtube"))
     video_filename = download_video(video.get('src'))
     if video_filename:
-        writer.add_file(str(PATH), title, str("./") + str(video_filename), license="TODO", copyright_holder = "TODO")
+        writer.add_file(str(PATH), title, str("./") + str(video_filename), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
 
 def add_html5app(writer, section):
     title = extract_title(section)
     recommended_time = get_recommended_time_for_section(section)
     filename = generate_html5app_from_section(section)
     print("\t\t\tRecommmended time: " + recommended_time)
-    writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license="TODO", copyright_holder = "TODO")
+    writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
     os.remove(html5app_path_from_title(title))
 
 
@@ -227,6 +232,7 @@ def generate_html5app_from_section(section):
     filename = html5app_path_from_title(title)
     with HTMLWriter(filename) as html5zip:
         add_images_to_zip(html5zip, section)
+        replace_links(html5zip, section)
         content = section.encode_contents
         html5zip.write_index_contents("<html><head></head><body>{}</body></html>".format(content))   
     return filename 
@@ -255,12 +261,58 @@ def replace_tags_with_local_content(section):
                 image["src"] = "#"
     return new_images 
 
+def replace_links(zipwriter, section):
+    links = section.find_all("a")
+    for link in links:
+        print("************")
+        print(link["href"])
+        try:
+            relpath, status = download_file(make_fully_qualified_url(link["href"]), "./files", filename=str(uuid.uuid4()))
+            downloaded_file = os.path.join("./files", relpath)
+            if  os.path.exists(downloaded_file)==False: raise("Error downloading file")
+            print(downloaded_file)
+            print(str(status))
+            if  is_valid_file(downloaded_file):
+                link["href"] = downloaded_file 
+                zipwriter.write_file(downloaded_file)
+            else:
+                link.replace_with(new_tag_from_link(link))
+        except:
+            link.replace_with(new_tag_from_link(link))
+        if  os.path.exists(downloaded_file)==True: os.remove(downloaded_file)
+        print("************")
+    return 0
+
+
+def new_tag_from_link(link):
+    soup = BeautifulSoup("<p></p>", 'html.parser')
+    new_tag = soup.p
+    text = ""
+    if link["href"] == link.get_text():
+        text = link["href"]
+    else:
+        text = link.get_text() + ": " + link["href"]
+    print(text)
+    new_tag.append(text)
+    return new_tag
+
+
+def is_valid_file(downloaded_file):
+    pattern = re.compile(".*(pdf|mp4).*")
+    file_type = magic.from_file(downloaded_file, mime = True) 
+    print('\033[94m' + file_type + '\033[0m')
+    if pattern.match(file_type):
+        print('\033[92m' + "Valid" + '\033[0m')
+        return True
+    else:
+        print('\033[91m' + "Invalid" + '\033[0m')
+        return False 
 
 def extract_title(section):
     page_title = section.find("h3", class_="sectionname")
     title = "no title"
     if page_title:
-        title = page_title.get_text()
+        title = page_title.get_text().strip()
     return title 
 
 
@@ -317,6 +369,7 @@ def download_video(url):
 	    'continuedl': True,
 	    'quiet' : True,
 	    'restrictfilenames':True, 
+            'format': 'bestvideo[ext=mp4]'
 	    }
     video_filename = ""
     with youtube_dl.YoutubeDL(ydl_options) as ydl:
