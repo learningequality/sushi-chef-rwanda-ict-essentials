@@ -221,14 +221,12 @@ def add_html5app(writer, section):
     title = extract_title(section)
     recommended_time = get_recommended_time_for_section(section)
     filename = generate_html5app_from_section(section)
-    print("\t\t\tRecommmended time: " + recommended_time)
     writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
     os.remove(html5app_path_from_title(title))
 
 
 def generate_html5app_from_section(section):
     title = extract_title(section)
-    print("\t" + str(title) + " (" + section.get('id') + ")")
     filename = html5app_path_from_title(title)
     with HTMLWriter(filename) as html5zip:
         add_images_to_zip(html5zip, section)
@@ -264,14 +262,10 @@ def replace_tags_with_local_content(section):
 def replace_links(zipwriter, section):
     links = section.find_all("a")
     for link in links:
-        print("************")
-        print(link["href"])
         try:
             relpath, status = download_file(make_fully_qualified_url(link["href"]), "./files", filename=str(uuid.uuid4()))
             downloaded_file = os.path.join("./files", relpath)
             if  os.path.exists(downloaded_file)==False: raise("Error downloading file")
-            print(downloaded_file)
-            print(str(status))
             if  is_valid_file(downloaded_file):
                 link["href"] = downloaded_file 
                 zipwriter.write_file(downloaded_file)
@@ -280,7 +274,6 @@ def replace_links(zipwriter, section):
         except:
             link.replace_with(new_tag_from_link(link))
         if  os.path.exists(downloaded_file)==True: os.remove(downloaded_file)
-        print("************")
     return 0
 
 
@@ -292,7 +285,6 @@ def new_tag_from_link(link):
         text = link["href"]
     else:
         text = link.get_text() + ": " + link["href"]
-    print(text)
     new_tag.append(text)
     return new_tag
 
@@ -300,12 +292,9 @@ def new_tag_from_link(link):
 def is_valid_file(downloaded_file):
     pattern = re.compile(".*(pdf|mp4).*")
     file_type = magic.from_file(downloaded_file, mime = True) 
-    print('\033[94m' + file_type + '\033[0m')
     if pattern.match(file_type):
-        print('\033[92m' + "Valid" + '\033[0m')
         return True
     else:
-        print('\033[91m' + "Invalid" + '\033[0m')
         return False 
 
 def extract_title(section):
@@ -363,7 +352,6 @@ def is_valid_title(title):
         return False
 
 def download_video(url):
-    print(url)
     ydl_options = {
 	    'outtmpl': '%(title)s-%(id)s.%(ext)s',
 	    'continuedl': True,
