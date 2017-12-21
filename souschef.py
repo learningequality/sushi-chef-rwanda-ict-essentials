@@ -10,6 +10,7 @@ from le_utils.constants import licenses, exercises, content_kinds, file_formats,
 from utils.downloader import read
 from utils.html import HTMLWriter
 from bs4 import BeautifulSoup
+import logging
 import re
 
 from utils.slugify import slugify
@@ -39,6 +40,13 @@ CHANNEL_LICENSE_OWNER = "Ministry of Education, Rwanda"
 # Additional Constants 
 ###########################################################
 BASE_URL = "https://ict-essentials-for-teachers.moodlecloud.com/"
+
+# Set up logging tools
+LOGGER = logging.getLogger()
+__logging_handler = logging.StreamHandler()
+LOGGER.addHandler(__logging_handler)
+LOGGER.setLevel(logging.INFO)
+
 
 IMG_LOOKUP = {
         'SectionObjective.png': 'Objective', 
@@ -86,7 +94,7 @@ def scrape_source(writer):
     soup = BeautifulSoup(content, 'html.parser')
     units = get_units_from_site(soup)
     for u in units:
-        print(u['name'])  
+        LOGGER.info('{}'.format(u['name']))
         parse_unit(writer, u['name'], u['link'])
 
 # Helper Methods 
@@ -117,16 +125,20 @@ def parse_unit(writer, name, link):
     sections = page.find_all('li', id = re.compile('section-')) 
     description = description_unit(sections[0])
     recommended_time = get_recommended_time_for_section(page.find('li', id = "section-0"))
-    print("Recommended Time:" + recommended_time)
     writer.add_folder(str(PATH), name, "", description + "Recommended time: " + str(recommended_time))
+    counter = 0
     for section in sections:
         section_type = clasify_block(section) 
         if section_type == 'html':
-            add_html5app(writer, section)
+            add_html5app(writer, section, format_section_number(counter))
         elif section_type == 'video': 
-            add_video(writer, section)
+            add_video(writer, section, format_section_number(counter))
+        counter += 1
     PATH.go_to_parent_folder()
     return 0
+
+def format_section_number(number):
+    return '{:02d} - '.format(number)
 
 def get_recommended_time_for_section(section):
     img = section.find("img", src=re.compile("SectionTime"))
@@ -151,7 +163,6 @@ def get_recommended_time_for_section(section):
                     if pattern.match(img.parent.parent.next_sibling.get_text()):
                         return img.parent.parent.next_sibling.get_text().strip()
                 except: 
-                    print('\033[91m' + "Empty recommended time" + '\033[0m')
                     return ""
 
 
@@ -210,23 +221,23 @@ def description_parent_previous_sibling_previous_sibling(learning_objectives):
 # Generating HTML5 app
 ##########################
 
-def add_video(writer, section):
-    title = extract_title(section)
+def add_video(writer, section, section_number):
+    title = extract_title(section, section_number)
     video = section.find("iframe", src=re.compile("youtube"))
     video_filename = download_video(video.get('src'))
     if video_filename:
         writer.add_file(str(PATH), title, str("./") + str(video_filename), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
 
-def add_html5app(writer, section):
-    title = extract_title(section)
+def add_html5app(writer, section, section_number):
+    title = extract_title(section, section_number)
     recommended_time = get_recommended_time_for_section(section)
-    filename = generate_html5app_from_section(section)
-    writer.add_file(str(PATH), html5app_filename(title), html5app_path_from_title(title), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
-    os.remove(html5app_path_from_title(title))
+    filename = generate_html5app_from_section(section, section_number)
+    writer.add_file(str(PATH), title, filename, license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER, ext = "")
+    os.remove(filename)
 
 
-def generate_html5app_from_section(section):
-    title = extract_title(section)
+def generate_html5app_from_section(section, section_number):
+    title = extract_title(section, section_number)
     filename = html5app_path_from_title(title)
     with HTMLWriter(filename) as html5zip:
         add_images_to_zip(html5zip, section)
@@ -297,11 +308,11 @@ def is_valid_file(downloaded_file):
     else:
         return False 
 
-def extract_title(section):
+def extract_title(section, number = ""):
     page_title = section.find("h3", class_="sectionname")
     title = "no title"
     if page_title:
-        title = page_title.get_text().strip()
+        title = str(number) + page_title.get_text().strip()
     return title 
 
 
@@ -366,6 +377,7 @@ def download_video(url):
             info = ydl.extract_info(url, download=True)
             video_filename = ydl.prepare_filename(info)
         except (youtube_dl.utils.DownloadError,youtube_dl.utils.ContentTooShortError,youtube_dl.utils.ExtractorError) as e:
+            LOGGER.info('Video couldnt be downloaded: {}'.format(url))
             return "" 
     return video_filename 
 
