@@ -21,7 +21,20 @@ import urllib.request
 import uuid
 import magic
 
+# Convert pdf files
+###########################################################
+import requests
 
+def save_response_content(response, filename):
+    with open(filename, 'wb') as localfile:
+        localfile.write(response.content)
+
+# convert it
+def convert_file(document, result):
+    microwave_url = 'http://35.185.105.222:8989/unoconv/pdf'
+    files = {'file': open(document, 'rb')}
+    response = requests.post(microwave_url, files=files)
+    save_response_content(response, result)
 
 # Run Constants
 ###########################################################
@@ -68,7 +81,6 @@ IMG_LOOKUP = {
         'UnitReferences.png': 'References',
         'SectionCompetency.png': 'Competency'
         }
-
 
 if not os.path.exists("assets"):
     os.makedirs("assets")
@@ -280,6 +292,11 @@ def replace_links(zipwriter, section):
             if  is_valid_file(downloaded_file):
                 link["href"] = downloaded_file 
                 zipwriter.write_file(downloaded_file)
+            elif is_convertible_file(downloaded_file):
+                new_file = os.path.join("./files", str(uuid.uuid4()))
+                convert_file(downloaded_file, new_file)
+                link["href"] = new_file 
+                zipwriter.write_file(new_file)
             else:
                 link.replace_with(new_tag_from_link(link))
         except:
@@ -302,6 +319,16 @@ def new_tag_from_link(link):
 
 def is_valid_file(downloaded_file):
     pattern = re.compile(".*(pdf|mp4).*")
+    file_type = magic.from_file(downloaded_file, mime = True) 
+    if pattern.match(file_type):
+        return True
+    else:
+        return False 
+
+def is_convertible_file(downloaded_file):
+    # pattern = re.compile(".*(powerpoint|msword|openxml).*")
+    # TODO: Verify why powerpoint is not loaded correctly
+    pattern = re.compile(".*(msword|openxml).*")
     file_type = magic.from_file(downloaded_file, mime = True) 
     if pattern.match(file_type):
         return True
