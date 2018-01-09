@@ -40,7 +40,7 @@ def convert_file(document, result):
 ###########################################################
 
 CHANNEL_NAME = "RME_ICT_Essentials_for_Teachers"              # Name of channel
-CHANNEL_SOURCE_ID = "rme-ict-essentials"      # Channel's unique id
+CHANNEL_SOURCE_ID = "ict-essentials"      # Channel's unique id
 CHANNEL_DOMAIN = "ict-essentials-for-teachers.moodlecloud.com" # Who is providing the content
 CHANNEL_LANGUAGE = "en"		# Language of channel
 CHANNEL_DESCRIPTION = None                                  # Description of the channel (optional)
@@ -105,9 +105,12 @@ def scrape_source(writer):
 
     soup = BeautifulSoup(content, 'html.parser')
     units = get_units_from_site(soup)
+    counter = 0
     for u in units:
-        LOGGER.info('{}'.format(u['name']))
-        parse_unit(writer, u['name'], u['link'])
+        if counter == 7:
+            LOGGER.info('{}'.format(u['name']))
+            parse_unit(writer, u['name'], u['link'])
+        counter += 1
 
 # Helper Methods 
 ###########################################################
@@ -137,7 +140,7 @@ def parse_unit(writer, name, link):
     sections = page.find_all('li', id = re.compile('section-')) 
     description = description_unit(sections[0])
     recommended_time = get_recommended_time_for_section(page.find('li', id = "section-0"))
-    writer.add_folder(str(PATH), name, "", description + "Recommended time: " + str(recommended_time))
+    writer.add_folder(str(PATH), name, "" + description + "Recommended time: " + str(recommended_time))
     counter = 0
     for section in sections:
         section_type = clasify_block(section) 
@@ -234,14 +237,14 @@ def description_parent_previous_sibling_previous_sibling(learning_objectives):
 ##########################
 
 def add_video(writer, section, section_number):
-    title = extract_title(section, section_number)
+    title = extract_title(section)
     video = section.find("iframe", src=re.compile("youtube"))
     video_filename = download_video(video.get('src'))
     if video_filename:
         writer.add_file(str(PATH), title, str("./") + str(video_filename), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
 
 def add_html5app(writer, section, section_number):
-    title = extract_title(section, section_number)
+    title = extract_title(section)
     recommended_time = get_recommended_time_for_section(section)
     filename = generate_html5app_from_section(section, section_number)
     writer.add_file(str(PATH), title, filename, license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER, ext = "")
@@ -249,13 +252,14 @@ def add_html5app(writer, section, section_number):
 
 
 def generate_html5app_from_section(section, section_number):
-    title = extract_title(section, section_number)
+    title = extract_title(section)
     filename = html5app_path_from_title(title)
     with HTMLWriter(filename) as html5zip:
+        remove_hidden_elements(section)
         add_images_to_zip(html5zip, section)
         replace_links(html5zip, section)
-        content = section.encode_contents
-        html5zip.write_index_contents("<html><head></head><body>{}</body></html>".format(content))   
+        content = "".join([str(x) for x in section.contents]) 
+        html5zip.write_index_contents("<html><head><meta charset=\"utf-8\"></head><body>{}</body></html>".format(content))   
     return filename 
 
 def add_images_to_zip(zipwriter, section):
@@ -263,6 +267,14 @@ def add_images_to_zip(zipwriter, section):
     for image in images:
         zipwriter.write_file(image["src"])
     return 0
+
+def remove_hidden_elements(section):
+  soup = BeautifulSoup("<p></p>", 'html.parser')
+  new_tag = soup.p
+  spans = section.find_all('span', class_="hidden")
+  for span in spans:
+      span.replace_with(new_tag)
+    
 
 def replace_tags_with_local_content(section):
     images = section.find_all("img") 
@@ -309,12 +321,21 @@ def new_tag_from_link(link):
     soup = BeautifulSoup("<p></p>", 'html.parser')
     new_tag = soup.p
     text = ""
-    if link["href"] == link.get_text():
+    if is_a_title(link):
+       text = link.get_text()
+    elif link["href"] == link.get_text():
         text = link["href"]
     else:
         text = link.get_text() + ": " + link["href"]
     new_tag.append(text)
     return new_tag
+
+def is_a_title(link):
+   list_of_titles = [ 'h1', 'h2', 'h3', 'h4', 'h5' ]
+   for parent in link.parents:
+      if any( parent.name in s for s in list_of_titles): 
+        return True 
+   return False
 
 
 def is_valid_file(downloaded_file):
@@ -339,7 +360,7 @@ def extract_title(section, number = ""):
     page_title = section.find("h3", class_="sectionname")
     title = "no title"
     if page_title:
-        title = str(number) + page_title.get_text().strip()
+        title = str(number) + page_title.get_text().replace("/","-").strip()
     return title 
 
 
@@ -347,7 +368,8 @@ def html5app_filename(title):
     return "{}.zip".format(slugify(title))
 
 def html5app_path_from_title(title):
-    return "./{}".format(html5app_filename(title))
+    new_title = title.replace("/", "-")
+    return "./{}".format(html5app_filename(new_title))
 
 def folder_name(unit_name):
     """ 
@@ -359,7 +381,7 @@ def folder_name(unit_name):
     returns:
     Unit 01 
     """
-    return re.search('(.+?) - .*', unit_name).group(1)
+    return unit_name.strip()
 
 def clasify_block(module):
     module_type = "html"
