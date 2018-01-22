@@ -105,12 +105,9 @@ def scrape_source(writer):
 
     soup = BeautifulSoup(content, 'html.parser')
     units = get_units_from_site(soup)
-    counter = 0
     for u in units:
-        if counter == 7:
-            LOGGER.info('{}'.format(u['name']))
-            parse_unit(writer, u['name'], u['link'])
-        counter += 1
+        LOGGER.info('{}'.format(u['name']))
+        parse_unit(writer, u['name'], u['link'])
 
 # Helper Methods 
 ###########################################################
@@ -237,27 +234,27 @@ def description_parent_previous_sibling_previous_sibling(learning_objectives):
 ##########################
 
 def add_video(writer, section, section_number):
-    title = extract_title(section)
+    title = extract_title(section, section_number)
     video = section.find("iframe", src=re.compile("youtube"))
     video_filename = download_video(video.get('src'))
     if video_filename:
         writer.add_file(str(PATH), title, str("./") + str(video_filename), license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER)
 
 def add_html5app(writer, section, section_number):
-    title = extract_title(section)
+    title = extract_title(section, section_number)
     recommended_time = get_recommended_time_for_section(section)
-    filename = generate_html5app_from_section(section, section_number)
+    filename = generate_html5app_from_section(writer, section, section_number)
     writer.add_file(str(PATH), title, filename, license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER, ext = "")
     os.remove(filename)
 
 
-def generate_html5app_from_section(section, section_number):
-    title = extract_title(section)
+def generate_html5app_from_section(writer, section, section_number):
+    title = extract_title(section, section_number)
     filename = html5app_path_from_title(title)
     with HTMLWriter(filename) as html5zip:
         remove_hidden_elements(section)
         add_images_to_zip(html5zip, section)
-        replace_links(html5zip, section)
+        replace_links(writer, html5zip, section)
         content = "".join([str(x) for x in section.contents]) 
         html5zip.write_index_contents("<html><head><meta charset=\"utf-8\"></head><body>{}</body></html>".format(content))   
     return filename 
@@ -294,7 +291,7 @@ def replace_tags_with_local_content(section):
                 image["src"] = "#"
     return new_images 
 
-def replace_links(zipwriter, section):
+def replace_links(writer, zipwriter, section):
     links = section.find_all("a")
     for link in links:
         try:
@@ -302,12 +299,16 @@ def replace_links(zipwriter, section):
             downloaded_file = os.path.join("./files", relpath)
             if  os.path.exists(downloaded_file)==False: raise("Error downloading file")
             if  is_valid_file(downloaded_file):
-                link["href"] = downloaded_file 
-                zipwriter.write_file(downloaded_file)
+                new_file = downloaed_file + parse_extension(downloaed_file)
+                os.rename(downloaded_file, new_file)
+                link["href"] = new_file 
+                writer.add_file(str(PATH), link.get_text().split('/')[-1], new_file, license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER, ext = "")
+                zipwriter.write_file(new_file)
             elif is_convertible_file(downloaded_file):
-                new_file = os.path.join("./files", str(uuid.uuid4()))
+                new_file = os.path.join("./files", str(uuid.uuid4()) + ".pdf")
                 convert_file(downloaded_file, new_file)
                 link["href"] = new_file 
+                writer.add_file(str(PATH), link.get_text(), new_file, license= CHANNEL_LICENSE, copyright_holder = CHANNEL_LICENSE_OWNER, ext = "")
                 zipwriter.write_file(new_file)
             else:
                 link.replace_with(new_tag_from_link(link))
@@ -345,6 +346,17 @@ def is_valid_file(downloaded_file):
         return True
     else:
         return False 
+
+def parse_extension(downloaded_file):
+    pattern_pdf = re.compile(".*pdf.*")
+    pattern_mp4= re.compile(".*pdf.*")
+    file_type = magic.from_file(downloaded_file, mime = True) 
+    if pattern_pdf.match(file_type): 
+        return ".pdf"
+    if pattern_mp4.match(file_type): 
+        return ".mp4"
+    return ""
+
 
 def is_convertible_file(downloaded_file):
     # pattern = re.compile(".*(powerpoint|msword|openxml).*")
